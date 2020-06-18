@@ -153,6 +153,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   
   // [[ CAN Init ]]
+  // This mcu is CANOpen Master. So it should receive all can frame.
   CAN_FilterTypeDef sFilterConfig0;
   sFilterConfig0.FilterBank = 0;
   sFilterConfig0.FilterMode = CAN_FILTERMODE_IDMASK;
@@ -169,20 +170,36 @@ int main(void)
   HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
   
   // [[ Timer2 Init ]]
+  // Start Timer2 to check timeout of CANOpen response (10kHz)
   HAL_TIM_Base_Start_IT(&htim2);
 
+  // Check [http://info.bluesink.io] to check Object Dictionary Elements.
+  // Stop motor drivers
+  // OD[2000, 04] = 0x00 (Set Motor driver to Stop state)
   canopenSlim_writeOD_uint8(0x22, 0x2000, 0x04, 0x00, 100);
   canopenSlim_writeOD_uint8(0x23, 0x2000, 0x04, 0x00, 100);
   while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_SET);
   
   // Startup Batch
   // [[ 0x22 ]]
+  // Set TPDO
+  // 1. OD[1800, 01] = 0x80000180 + Node ID (Disable TPDO)
+  // 2. OD[1A00 ,00] = 0x00 (Disable TPDO Mapping)
+  // 3. OD[1A00, 01] = 0x20010220 (Mapping OD[2001, 02] to first entry)
+  // 4. OD[1A00, 00] = 0x01 (Enable TPDO Mapping)
+  // 5. OD[1800, 01] = 0x180 + Node ID (Enable TPDO)
   canopenSlim_writeOD_uint32(0x22, 0x1800, 0x01, 0x22 | 0x80000180, 1000);
   canopenSlim_writeOD_uint8(0x22, 0x1A00, 0x00, 0, 1000);
   canopenSlim_writeOD_uint32(0x22, 0x1A00, 0x01, 0x20010220, 1000); 
   canopenSlim_writeOD_uint8(0x22, 0x1A00, 0x00, 1, 1000);
   canopenSlim_writeOD_uint32(0x22, 0x1800, 0x01, 0x22 | 0x180, 1000);
-  
+
+  // Set RPDO
+  // 1. OD[1400, 01] = 0x80000200 + Node ID (Disable RPDO)
+  // 2. OD[1600 ,00] = 0x00 (Disable RPDO Mapping)
+  // 3. OD[1600, 01] = 0x20000220 (Mapping OD[2000, 02] to first entry)
+  // 4. OD[1600, 00] = 0x01 (Enable RPDO Mapping)
+  // 5. OD[1400, 01] = 0x200 + Node ID (Enable RPDO)    
   canopenSlim_writeOD_uint32(0x22, 0x1400, 0x01, 0x22 | 0x80000200, 1000);
   canopenSlim_writeOD_uint8(0x22, 0x1600, 0x00, 0, 1000);
   canopenSlim_writeOD_uint32(0x22, 0x1600, 0x01, 0x20000220, 1000); 
@@ -196,12 +213,22 @@ int main(void)
   canopenSlim_mappingPDO_int32(&readPDO[0], &readPOS[0]);
 
     // [[ 0x23 ]]
+  // 1. OD[1800, 01] = 0x80000180 + Node ID (Disable TPDO)
+  // 2. OD[1A00 ,00] = 0x00 (Disable TPDO Mapping)
+  // 3. OD[1A00, 01] = 0x20010220 (Mapping OD[2001, 02] to first entry)
+  // 4. OD[1A00, 00] = 0x01 (Enable TPDO Mapping)
+  // 5. OD[1800, 01] = 0x180 + Node ID (Enable TPDO)
   canopenSlim_writeOD_uint32(0x23, 0x1800, 0x01, 0x23 | 0x80000180, 1000);
   canopenSlim_writeOD_uint8(0x23, 0x1A00, 0x00, 0, 1000);
   canopenSlim_writeOD_uint32(0x23, 0x1A00, 0x01, 0x20010220, 1000); 
   canopenSlim_writeOD_uint8(0x23, 0x1A00, 0x00, 1, 1000);
   canopenSlim_writeOD_uint32(0x23, 0x1800, 0x01, 0x23 | 0x00000180, 1000);
   
+  // 1. OD[1400, 01] = 0x80000200 + Node ID (Disable RPDO)
+  // 2. OD[1600 ,00] = 0x00 (Disable RPDO Mapping)
+  // 3. OD[1600, 01] = 0x20000220 (Mapping OD[2000, 02] to first entry)
+  // 4. OD[1600, 00] = 0x01 (Enable RPDO Mapping)
+  // 5. OD[1400, 01] = 0x200 + Node ID (Enable RPDO)  
   canopenSlim_writeOD_uint32(0x23, 0x1400, 0x01, 0x23 | 0x80000200, 1000);
   canopenSlim_writeOD_uint8(0x23, 0x1600, 0x00, 0, 1000);
   canopenSlim_writeOD_uint32(0x23, 0x1600, 0x01, 0x20000220, 1000); 
@@ -214,11 +241,13 @@ int main(void)
   canopenSlim_mappingPDO_init(&readPDO[1]);
   canopenSlim_mappingPDO_int32(&readPDO[1], &readPOS[1]);
   
-  // [[ Go to speed control state ]]
+  // [[ Go to position control state ]]
+  // OD[2000, 04] = 0x04 (Set Motor driver to Position control state)
   canopenSlim_writeOD_uint8(0x22, 0x2000, 0x04, 0x04, 100);
   canopenSlim_writeOD_uint8(0x23, 0x2000, 0x04, 0x04, 100);
   
   // [[ Main timer start ]]
+  // Start main control timer (1kHz)
   HAL_TIM_Base_Start_IT(&htim1);
 
   /* USER CODE END 2 */
